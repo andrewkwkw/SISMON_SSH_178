@@ -2,7 +2,7 @@ from flask import Flask, render_template, jsonify
 from model import SSHLogAnalyzer
 import os
 import time
-from collections import deque
+import subprocess
 
 app = Flask(__name__)
 
@@ -37,15 +37,22 @@ def update_cache_if_needed():
     if mtime <= CACHE["last_mtime"] and CACHE["analyze_data"] is not None:
         return True
         
-    # 2. Cooldown 30 detik: Jangan jalankan algoritma berat berkali-kali jika ada serangan konstan
-    if current_time - CACHE["last_update"] < 30 and CACHE["analyze_data"] is not None:
+    # 2. Cooldown 60 detik agar lebih mulus saat presentasi sidang
+    if current_time - CACHE["last_update"] < 60 and CACHE["analyze_data"] is not None:
         return True
         
     print("Menganalisis ulang log file (bisa memakan waktu)...")
-    # OPTIMASI VPS: Hanya baca 10.000 baris terakhir (sekitar beberapa hari terakhir)
-    # Jika kita membaca seluruh file /var/log/auth.log yang besarnya puluhan MB, server akan freeze.
-    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-        raw_logs = list(deque(f, maxlen=10000))
+    # OPTIMASI EKSTREM: Gunakan perintah native 'tail' Linux agar selesai dalam hitungan milidetik
+    if os.name == 'posix': # Jika di VPS (Linux)
+        try:
+            result = subprocess.run(['tail', '-n', '10000', log_file], stdout=subprocess.PIPE, text=True, errors='ignore')
+            raw_logs = result.stdout.splitlines(keepends=True)
+        except Exception:
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw_logs = f.readlines()[-10000:]
+    else: # Jika di Windows lokal
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            raw_logs = f.readlines()[-10000:]
         
     analyzer = SSHLogAnalyzer(contamination=0.05)
     df_parsed = analyzer.parse_log(raw_logs)
