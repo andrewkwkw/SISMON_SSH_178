@@ -1,12 +1,15 @@
 from flask import Flask, render_template, jsonify
 from model import SSHLogAnalyzer
 import os
+import time
+from collections import deque
 
 app = Flask(__name__)
 
 # Cache global untuk mempercepat proses loading
 CACHE = {
     "last_mtime": 0,
+    "last_update": 0, # Waktu terakhir diupdate (dalam detik)
     "analyze_data": None,
     "livelog_data": None
 }
@@ -28,13 +31,21 @@ def update_cache_if_needed():
         return False
         
     mtime = os.path.getmtime(log_file)
-    # Jika file tidak berubah, jangan proses ulang
+    current_time = time.time()
+    
+    # 1. Jangan update jika file tidak berubah
     if mtime <= CACHE["last_mtime"] and CACHE["analyze_data"] is not None:
         return True
         
+    # 2. Cooldown 30 detik: Jangan jalankan algoritma berat berkali-kali jika ada serangan konstan
+    if current_time - CACHE["last_update"] < 30 and CACHE["analyze_data"] is not None:
+        return True
+        
     print("Menganalisis ulang log file (bisa memakan waktu)...")
-    with open(log_file, "r") as f:
-        raw_logs = f.readlines()
+    # OPTIMASI VPS: Hanya baca 10.000 baris terakhir (sekitar beberapa hari terakhir)
+    # Jika kita membaca seluruh file /var/log/auth.log yang besarnya puluhan MB, server akan freeze.
+    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+        raw_logs = list(deque(f, maxlen=10000))
         
     analyzer = SSHLogAnalyzer(contamination=0.05)
     df_parsed = analyzer.parse_log(raw_logs)
@@ -118,6 +129,7 @@ def update_cache_if_needed():
     }
     
     CACHE["last_mtime"] = mtime
+    CACHE["last_update"] = current_time
     return True
 
 @app.route('/')
