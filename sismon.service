@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn instance to serve Sistem Monitoring SSH
+After=network.target
+
+[Service]
+User=root
+Group=www-data
+WorkingDirectory=/root/skripsi_implementasi-VPS
+Environment="PATH=/root/skripsi_implementasi-VPS/venv/bin"
+ExecStart=/root/skripsi_implementasi-VPS/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:5000 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

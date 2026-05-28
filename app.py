@@ -12,11 +12,15 @@ CACHE = {
 }
 
 def get_log_file():
-    log_file = "auth2.log"
-    if not os.path.exists(log_file):
-        if os.path.exists("../auth2.log"):
-            log_file = "../auth2.log"
-    return log_file
+    # 1. Prioritas utama: File log asli di VPS (production)
+    if os.path.exists("/var/log/auth.log"):
+        return "/var/log/auth.log"
+    # 2. Fallback: File log bohongan untuk testing lokal
+    if os.path.exists("auth2.log"):
+        return "auth2.log"
+    if os.path.exists("../auth2.log"):
+        return "../auth2.log"
+    return "auth2.log"
 
 def update_cache_if_needed():
     log_file = get_log_file()
@@ -132,7 +136,9 @@ def api_livelog():
         return jsonify({"error": "Log file not found"}), 404
     return jsonify(CACHE["livelog_data"])
 
-if __name__ == '__main__':
-    # Analisis pertama kali saat server nyala
+# Inisialisasi awal (berguna saat dijalankan via Gunicorn)
+with app.app_context():
     update_cache_if_needed()
-    app.run(debug=True, port=5000)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
