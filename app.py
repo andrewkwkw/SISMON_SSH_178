@@ -155,6 +155,25 @@ def api_livelog():
         return jsonify({"error": "Log file not found"}), 404
     return jsonify(CACHE["livelog_data"])
 
+@app.route('/api/raw_tail')
+def api_raw_tail():
+    log_file = get_log_file()
+    if not os.path.exists(log_file):
+        return jsonify({"error": "Log file not found"}), 404
+        
+    if os.name == 'posix':
+        try:
+            result = subprocess.run(['tail', '-n', '500', log_file], stdout=subprocess.PIPE, text=True, errors='ignore')
+            raw_logs = result.stdout.splitlines(keepends=True)
+        except Exception:
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                raw_logs = f.readlines()[-500:]
+    else:
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            raw_logs = f.readlines()[-500:]
+            
+    return jsonify({"raw_logs": raw_logs[::-1]}) # Dibalik agar terbaru di atas
+
 # Inisialisasi awal (berguna saat dijalankan via Gunicorn)
 with app.app_context():
     update_cache_if_needed()
