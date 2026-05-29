@@ -164,9 +164,19 @@ class SSHLogAnalyzer:
     @classmethod
     def load_model(cls, filepath):
         if os.path.exists(filepath):
-            model = joblib.load(filepath)
+            model_data = joblib.load(filepath)
+            instance = cls()
+            if isinstance(model_data, dict):
+                instance.iso_forest = model_data.get('iso_forest')
+                instance.scaler = model_data.get('scaler')
+                instance.history_mean_failed = model_data.get('mean', 2.0)
+                instance.history_std_failed = model_data.get('std', 1.0)
+            else:
+                instance.iso_forest = model_data
+                instance.scaler = StandardScaler() # Fallback if it was just the forest
+            instance.is_fitted = True
             print(f"Model berhasil dimuat dari {filepath}")
-            return model
+            return instance
         else:
             raise FileNotFoundError(f"File model {filepath} tidak ditemukan!")
 
