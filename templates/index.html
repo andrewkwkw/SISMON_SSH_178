@@ -199,20 +199,22 @@
 
             <!-- 2 Charts -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Chart 1: Mixed Chart -->
                 <div class="glass-panel p-6">
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-bar text-primary"></i> Tren Z-Score (Failed Count)</h3>
+                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-line text-primary"></i> Korelasi Volume & Tingkat Anomali (Top 15)</h3>
                     </div>
                     <div class="h-64">
-                        <canvas id="chartZScore"></canvas>
+                        <canvas id="chartMixed"></canvas>
                     </div>
                 </div>
+                <!-- Chart 2: Doughnut Chart -->
                 <div class="glass-panel p-6">
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-line text-critical"></i> Tren Anomaly Score</h3>
+                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-pie text-critical"></i> Distribusi Tingkat Ancaman Keseluruhan</h3>
                     </div>
-                    <div class="h-64">
-                        <canvas id="chartAnomaly"></canvas>
+                    <div class="h-64 flex justify-center">
+                        <canvas id="chartDistribution"></canvas>
                     </div>
                 </div>
             </div>
@@ -534,7 +536,7 @@
 
                     renderAnalysisTable();
                     renderTopUsersTable();
-                    renderCharts(data.chart_labels, data.chart_failed, data.chart_zscore);
+                    renderCharts(data.chart_labels, data.chart_failed, data.chart_zscore, data.summary);
                 })
                 .finally(() => toggleLoading(false));
         }
@@ -683,7 +685,7 @@
                 .finally(() => toggleLoading(false));
         }
 
-        function renderCharts(labels, failedData, zscoreData) {
+        function renderCharts(labels, failedData, zscoreData, summary) {
             // Global Chart Style Overrides
             Chart.defaults.color = '#94A3B8';
             Chart.defaults.font.family = "'Outfit', sans-serif";
@@ -692,82 +694,103 @@
             Chart.defaults.plugins.tooltip.bodyColor = '#94A3B8';
             Chart.defaults.plugins.tooltip.borderColor = 'rgba(59, 130, 246, 0.3)';
             Chart.defaults.plugins.tooltip.borderWidth = 1;
-            Chart.defaults.plugins.tooltip.padding = 10;
+            Chart.defaults.plugins.tooltip.padding = 12;
             Chart.defaults.plugins.tooltip.cornerRadius = 8;
-            Chart.defaults.plugins.tooltip.displayColors = false;
+            Chart.defaults.plugins.tooltip.displayColors = true;
 
+            // CHART 1: MIXED CHART (Bar + Line)
             if(chart1) chart1.destroy();
-            const ctx1 = document.getElementById('chartZScore').getContext('2d');
+            const ctx1 = document.getElementById('chartMixed').getContext('2d');
             
-            let gradient1 = ctx1.createLinearGradient(0, 0, 0, 400);
-            gradient1.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
-            gradient1.addColorStop(1, 'rgba(59, 130, 246, 0.1)');
+            let gradientBar = ctx1.createLinearGradient(0, 0, 0, 400);
+            gradientBar.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
+            gradientBar.addColorStop(1, 'rgba(59, 130, 246, 0.1)');
 
             chart1 = new Chart(ctx1, {
-                type: 'bar',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Gagal Login (Volume)',
-                        data: failedData,
-                        backgroundColor: gradient1,
-                        borderColor: 'rgba(59, 130, 246, 1)',
-                        borderWidth: 1,
-                        borderRadius: 4,
-                        hoverBackgroundColor: 'rgba(59, 130, 246, 1)',
-                        borderSkipped: false
-                    }]
+                    datasets: [
+                        {
+                            type: 'line',
+                            label: 'Z-Score (Anomali)',
+                            data: zscoreData,
+                            borderColor: '#EF4444',
+                            backgroundColor: '#EF4444',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            pointBackgroundColor: '#EF4444',
+                            pointRadius: 4,
+                            yAxisID: 'y1',
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Gagal Login (Volume)',
+                            data: failedData,
+                            backgroundColor: gradientBar,
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            yAxisID: 'y',
+                        }
+                    ]
                 },
                 options: { 
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { 
+                        legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } }
+                    },
                     scales: { 
-                        x: { display: false }, 
+                        x: { display: false }, // Sembunyikan label panjang di bawah
                         y: { 
-                            border: { display: false },
-                            grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false }
-                        } 
+                            type: 'linear', display: true, position: 'left',
+                            title: { display: true, text: 'Jumlah Gagal', color: '#94A3B8', font: { size: 10 } },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        y1: {
+                            type: 'linear', display: true, position: 'right',
+                            title: { display: true, text: 'Z-Score', color: '#EF4444', font: { size: 10 } },
+                            grid: { drawOnChartArea: false } // Hilangkan grid untuk axis kanan
+                        }
                     }
                 }
             });
 
+            // CHART 2: DOUGHNUT CHART (Distribution)
             if(chart2) chart2.destroy();
-            const ctx2 = document.getElementById('chartAnomaly').getContext('2d');
+            const ctx2 = document.getElementById('chartDistribution').getContext('2d');
             
-            let gradient2 = ctx2.createLinearGradient(0, 0, 0, 400);
-            gradient2.addColorStop(0, 'rgba(239, 68, 68, 0.5)');
-            gradient2.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
-
             chart2 = new Chart(ctx2, {
-                type: 'line',
+                type: 'doughnut',
                 data: {
-                    labels: labels,
+                    labels: ['Normal', 'Warning', 'Critical'],
                     datasets: [{
-                        label: 'Z-Score (Tingkat Anomali)',
-                        data: zscoreData,
-                        borderColor: '#EF4444',
-                        backgroundColor: gradient2,
+                        data: [summary.normal, summary.warning, summary.critical],
+                        backgroundColor: [
+                            'rgba(16, 185, 129, 0.8)', // Normal (Green)
+                            'rgba(245, 158, 11, 0.8)', // Warning (Yellow)
+                            'rgba(239, 68, 68, 0.8)'   // Critical (Red)
+                        ],
+                        borderColor: '#1E293B',
                         borderWidth: 2,
-                        fill: true,
-                        tension: 0.4, // Smooth curve
-                        pointBackgroundColor: '#1E293B',
-                        pointBorderColor: '#EF4444',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        pointHoverBackgroundColor: '#EF4444',
-                        pointHoverBorderColor: '#FFF'
+                        hoverOffset: 4
                     }]
                 },
                 options: { 
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { 
-                        x: { display: false }, 
-                        y: { 
-                            border: { display: false },
-                            grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false }
-                        } 
+                    cutout: '70%',
+                    plugins: { 
+                        legend: { position: 'right', labels: { usePointStyle: true, padding: 20, color: '#F1F5F9' } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) { label += ': '; }
+                                    label += context.raw + ' IP';
+                                    return label;
+                                }
+                            }
+                        }
                     }
                 }
             });
