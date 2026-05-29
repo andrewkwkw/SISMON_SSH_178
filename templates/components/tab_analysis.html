@@ -31,11 +31,10 @@
         </div>
         <div class="wazuh-panel p-5 flex flex-col">
             <div class="flex justify-between items-center mb-4 shrink-0">
-                <h3 class="font-medium text-sm text-textMain">Perbandingan Proporsi Anomali vs Normal</h3>
+                <h3 class="font-medium text-sm text-textMain">Tren Isolation Forest (-1: Anomaly, 1: Normal)</h3>
             </div>
-            <!-- Custom HTML Horizontal Bar Chart -->
-            <div class="flex-1 flex flex-col justify-center gap-6" id="custom-proportion-chart">
-                <!-- Diisi via JS -->
+            <div class="flex-1 relative min-h-[16rem]">
+                <canvas id="chartIsolationForest"></canvas>
             </div>
         </div>
     </div>

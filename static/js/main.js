@@ -201,6 +201,39 @@
             }
         }
 
+        // =====================================
+        // SEARCH / FILTER FUNCTIONS
+        // =====================================
+
+        function filterAnalysisLogs() {
+            const query = document.getElementById('search-analysis').value.toLowerCase();
+            filteredAnalysisLogs = currentAnalysisLogs.filter(log => {
+                return log.ip.toLowerCase().includes(query) || 
+                       log.reason.toLowerCase().includes(query) ||
+                       (log.time_window && log.time_window.toLowerCase().includes(query));
+            });
+            currentPage = 1;
+            renderAnalysisTable();
+        }
+
+        function filterSuccessLogs() {
+            const query = document.getElementById('search-success').value.toLowerCase();
+            const filtered = currentSuccessLogs.filter(log => log.toLowerCase().includes(query));
+            document.getElementById('log-success').innerHTML = filtered.join('<br>') || 'Tidak ada data matching.';
+        }
+
+        function filterFailedLogs() {
+            const query = document.getElementById('search-failed').value.toLowerCase();
+            const filtered = currentFailedLogs.filter(log => log.toLowerCase().includes(query));
+            document.getElementById('log-failed').innerHTML = filtered.join('<br>') || 'Tidak ada data matching.';
+        }
+
+        function filterLogs() {
+            const query = document.getElementById('log-search').value.toLowerCase();
+            const filtered = currentRawLogs.filter(log => log.toLowerCase().includes(query));
+            document.getElementById('log-raw').innerHTML = filtered.join('') || 'Tidak ada data matching.';
+        }
+
         function renderTopUsersTable() {
             const tbody = document.getElementById('topuser-table');
             if(!filteredTopUsers || filteredTopUsers.length === 0) {
@@ -416,110 +449,108 @@
                 }
             });
 
-            // CHART 2: CUSTOM HTML HORIZONTAL BAR (Proporsi Anomali vs Normal)
-            const totalNormal = summary.normal;
-            const totalAnomaly = summary.critical + summary.warning;
-            const grandTotal = totalNormal + totalAnomaly;
+            // CHART 2: ISOLATION FOREST
+            if(chart2) chart2.destroy();
+            const ctx2 = document.getElementById('chartIsolationForest').getContext('2d');
             
-            const pctNormal = grandTotal > 0 ? Math.round((totalNormal / grandTotal) * 100) : 0;
-            const pctAnomaly = grandTotal > 0 ? Math.round((totalAnomaly / grandTotal) * 100) : 0;
-
-            const htmlContainer = document.getElementById('custom-proportion-chart');
-            htmlContainer.innerHTML = `
-                <!-- Bar Anomali -->
-                <div class="flex items-center gap-4">
-                    <div class="w-24 text-right shrink-0">
-                        <p class="text-sm font-medium text-textMain leading-tight">Anomali</p>
-                        <p class="text-[10px] text-textMuted">(Merah)</p>
-                    </div>
-                    <div class="flex-1 border-l border-borderWazuh relative h-14 flex items-center">
-                        <!-- Balok Merah -->
-                        <div class="h-10 bg-[#FF5E5E] transition-all duration-1000 ease-out shadow-lg" style="width: ${Math.max(pctAnomaly, 2)}%;"></div>
-                        <!-- Teks di dalam/luar balok -->
-                        <div class="absolute inset-y-0 left-0 flex items-center pl-3 gap-6" style="left: ${Math.max(pctAnomaly, 2)}%;">
-                            <span class="text-xl font-bold text-[#FF5E5E] whitespace-nowrap pl-4 drop-shadow-md">${totalAnomaly.toLocaleString()} EVENTS</span>
-                            <span class="text-xl font-bold text-[#FF5E5E]/80 whitespace-nowrap">${pctAnomaly}%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bar Normal -->
-                <div class="flex items-center gap-4">
-                    <div class="w-24 text-right shrink-0">
-                        <p class="text-sm font-medium text-textMain leading-tight">Normal</p>
-                        <p class="text-[10px] text-textMuted">(Hijau)</p>
-                    </div>
-                    <div class="flex-1 border-l border-borderWazuh relative h-14 flex items-center">
-                        <!-- Balok Hijau -->
-                        <div class="h-10 bg-[#48C774] transition-all duration-1000 ease-out shadow-lg" style="width: ${Math.max(pctNormal, 2)}%;"></div>
-                        <!-- Teks di dalam/luar balok -->
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 gap-6 w-full justify-end" style="right: ${100 - pctNormal}%; padding-right: 15px;">
-                            <span class="text-xl font-bold text-dark whitespace-nowrap">${totalNormal.toLocaleString()} EVENTS</span>
-                            <span class="text-xl font-bold text-dark/80 whitespace-nowrap">${pctNormal}%</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Legend Bawah -->
-                <div class="mt-4 flex justify-center gap-6 text-xs text-textMuted font-medium border-t border-borderWazuh pt-4">
-                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-[#FF5E5E]"></div> Anomali (Isolation Forest = -1)</div>
-                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-[#48C774]"></div> Normal (Isolation Forest = 1)</div>
-                </div>
-            `;
+            const ifData = summary.chart_if || [];
+            chart2 = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Isolation Forest Output',
+                        data: ifData,
+                        borderColor: '#10B981',
+                        backgroundColor: '#10B981',
+                        borderWidth: 2,
+                        pointRadius: 5,
+                        pointBackgroundColor: function(context) {
+                            const index = context.dataIndex;
+                            const value = context.dataset.data[index];
+                            return value === -1 ? '#EF4444' : '#10B981'; // Merah jika Anomaly
+                        },
+                        pointBorderColor: 'transparent',
+                        showLine: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: -1.5,
+                            max: 1.5,
+                            ticks: {
+                                stepSize: 1,
+                                callback: function(value) {
+                                    if(value === -1) return '-1 (Anomaly)';
+                                    if(value === 1) return '1 (Normal)';
+                                    return '';
+                                }
+                            }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
         }
 
         
         function setupLiveStream() {
             toggleLoading(true, 'Menghubungkan ke Live Stream AI...');
-            if(eventSource) eventSource.close();
+            if(eventSource) {
+                eventSource.close();
+            }
             
             eventSource = new EventSource('/api/stream');
-            
-            eventSource.onmessage = function(e) {
-                const data = JSON.parse(e.data);
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
                 toggleLoading(false);
                 
-                // UPDATE ANALYSIS
-                const analysis = data.analysis;
-                if (analysis && analysis.logs) {
-                    const totalEvents = analysis.logs.reduce((acc, log) => acc + log.failed_count, 0);
-                    document.getElementById('kpi-total').textContent = totalEvents.toLocaleString();
-                    document.getElementById('kpi-unique').textContent = analysis.summary.total_ips.toLocaleString();
-                    document.getElementById('kpi-critical').textContent = (analysis.summary.critical + analysis.summary.warning).toLocaleString();
+                // --- 1. Update Analysis (Charts, KPI, Table) ---
+                if(data.analysis) {
+                    const analysis = data.analysis;
+                    
+                    document.getElementById('kpi-total').textContent = analysis.summary.total_ips;
+                    document.getElementById('kpi-unique').textContent = analysis.summary.total_ips;
+                    document.getElementById('kpi-critical').textContent = analysis.summary.critical;
                     document.getElementById('stat-peak-z').textContent = analysis.peak_zscore_ip;
-
-                    currentAnalysisLogs = analysis.logs;
-                    filteredAnalysisLogs = currentAnalysisLogs;
+                    
+                    currentAnalysisLogs = analysis.logs || [];
+                    
+                    // Jangan re-render tabel jika user sedang search
+                    const searchQuery = document.getElementById('search-analysis').value;
+                    if(!searchQuery) {
+                        filteredAnalysisLogs = currentAnalysisLogs;
+                        renderAnalysisTable();
+                    }
+                    
+                    renderCharts(analysis.logs, analysis);
                     
                     currentTopUsers = analysis.top_users || [];
-                    filteredTopUsers = currentTopUsers;
-
-                    renderAnalysisTable();
-                    renderTopUsersTable();
-                    
-                    if (chart1 && chart2) {
-                        chart1.data.labels = analysis.chart_labels;
-                        chart1.data.datasets[0].data = analysis.chart_failed;
-                        chart1.update();
-                        renderProportionChart(analysis.summary);
-                    } else {
-                        renderCharts(currentAnalysisLogs, analysis.summary);
+                    const topuserQuery = document.getElementById('search-topuser').value;
+                    if(!topuserQuery) {
+                        filteredTopUsers = currentTopUsers;
+                        renderTopUsersTable();
                     }
                 }
                 
-                // UPDATE LIVELOG
-                const livelog = data.livelog;
-                if (livelog && livelog.success_logs) {
-                    currentRawLogs = livelog.raw_logs || [];
-                    document.getElementById('log-success').innerHTML = livelog.success_logs.join('<br>') || 'Tidak ada data.';
-                    document.getElementById('log-failed').innerHTML = livelog.failed_logs.join('<br>') || 'Tidak ada data.';
+                // --- 2. Update Livelog & Raw Data ---
+                if(data.livelog) {
+                    currentSuccessLogs = data.livelog.success_logs || [];
+                    currentFailedLogs = data.livelog.failed_logs || [];
+                    currentRawLogs = data.livelog.raw_logs || [];
                     
-                    const query = document.getElementById('log-search')?.value.toLowerCase() || '';
-                    if(query === '') {
-                        document.getElementById('log-raw').innerHTML = currentRawLogs.join('');
-                    } else {
-                        const filtered = currentRawLogs.filter(line => line.toLowerCase().includes(query));
-                        document.getElementById('log-raw').innerHTML = filtered.length > 0 ? filtered.join('') : '<span class="text-gray-500">Log tidak ditemukan.</span>';
+                    // Hanya update UI jika user tidak sedang search
+                    if(!document.getElementById('search-success').value) {
+                        document.getElementById('log-success').innerHTML = currentSuccessLogs.join('<br>') || 'Tidak ada data.';
+                    }
+                    if(!document.getElementById('search-failed').value) {
+                        document.getElementById('log-failed').innerHTML = currentFailedLogs.join('<br>') || 'Tidak ada data.';
+                    }
+                    if(!document.getElementById('log-search').value) {
+                        document.getElementById('log-raw').innerHTML = currentRawLogs.join('') || 'Tidak ada data.';
                     }
                 }
             };

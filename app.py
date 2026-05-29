@@ -86,6 +86,7 @@ def process_logs_batch(raw_lines):
     trend_zscore_labels = [f"{r['ip']} ({r['time_window']})" for r in results_sorted[:15]]
     trend_zscore_data = [r['failed_count'] for r in results_sorted[:15]]
     trend_anomaly_data = [r['z_score'] for r in results_sorted[:15]]
+    trend_if_data = [r['if_label'] for r in results_sorted[:15]]
     
     peak_zscore = results_sorted[0]['ip'] if results_sorted else "-"
     
@@ -113,6 +114,7 @@ def process_logs_batch(raw_lines):
         "chart_labels": trend_zscore_labels,
         "chart_failed": trend_zscore_data,
         "chart_zscore": trend_anomaly_data,
+        "chart_if": trend_if_data,
         "inference_latency_ms": round(inference_time, 2)
     }
 
