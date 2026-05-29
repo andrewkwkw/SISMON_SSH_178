@@ -58,6 +58,10 @@ class SSHLogAnalyzer:
                 except Exception:
                     dt_obj = pd.NaT
                 parsed_data.append({'timestamp': dt_obj, 'ip': ip, 'username': user, 'status': status})
+        
+        if not parsed_data:
+            return pd.DataFrame(columns=['timestamp', 'ip', 'username', 'status'])
+            
         return pd.DataFrame(parsed_data)
 
     def feature_engineering(self, df):

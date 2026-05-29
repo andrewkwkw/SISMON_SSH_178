@@ -45,8 +45,10 @@ def update_cache_if_needed():
     # OPTIMASI EKSTREM: Gunakan perintah native 'tail' Linux agar selesai dalam hitungan milidetik
     if os.name == 'posix': # Jika di VPS (Linux)
         try:
-            result = subprocess.run(['tail', '-n', '10000', log_file], stdout=subprocess.PIPE, text=True, errors='ignore')
+            result = subprocess.run(['tail', '-n', '10000', log_file], stdout=subprocess.PIPE, text=True, errors='ignore', check=True)
             raw_logs = result.stdout.splitlines(keepends=True)
+            if not raw_logs:
+                raise Exception("Empty stdout")
         except Exception:
             with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
                 raw_logs = f.readlines()[-10000:]
