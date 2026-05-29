@@ -141,7 +141,7 @@
             const tbody = document.getElementById('analysis-table');
             
             if(filteredAnalysisLogs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-textMuted">Data tidak ditemukan.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-textMuted">Data tidak ditemukan.</td></tr>`;
                 document.getElementById('pagination-info').textContent = 'Tidak ada data';
                 document.getElementById('btn-prev').disabled = true;
                 document.getElementById('btn-next').disabled = true;
@@ -175,8 +175,7 @@
                         <td class="px-4 py-3 font-mono text-textMuted">${log.z_score}</td>
                         <td class="px-4 py-3">${ifBadge}</td>
                         <td class="px-4 py-3 text-[11px]">${sevBadge}</td>
-                        <td class="px-4 py-3 text-textMuted text-[11px] truncate max-w-xs" title="${log.reason}">${log.reason}</td>
-                    </tr>
+                                            </tr>
                 `;
             });
             tbody.innerHTML = rows;
