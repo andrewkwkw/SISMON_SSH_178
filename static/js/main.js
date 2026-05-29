@@ -165,9 +165,7 @@
                 else if (log.severity === 'WARNING') sevBadge = '<span class="text-warning font-semibold">WARNING</span>';
                 else sevBadge = '<span class="text-normal font-semibold">NORMAL</span>';
 
-                let ifBadge = log.if_label === -1 
-                    ? '<span class="bg-critical/20 text-critical px-2 py-0.5 rounded text-[10px] font-bold">Anomaly</span>'
-                    : '<span class="bg-gray-700 text-textMuted px-2 py-0.5 rounded text-[10px]">Normal</span>';
+                let ifBadge = log.if_label === -1 ? '<span class="text-critical font-mono font-bold">-1</span>' : '<span class="text-textMuted font-mono">1</span>';
 
                 rows += `
                     <tr class="hover:bg-panel transition-colors border-b border-borderWazuh last:border-0">

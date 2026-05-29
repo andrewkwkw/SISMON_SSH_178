@@ -150,7 +150,13 @@ class SSHLogAnalyzer:
         
     def save_model(self, filepath):
         if self.is_fitted:
-            joblib.dump(self, filepath)
+            model_data = {
+                'iso_forest': self.iso_forest,
+                'scaler': self.scaler,
+                'mean': self.history_mean_failed,
+                'std': self.history_std_failed
+            }
+            joblib.dump(model_data, filepath)
             print(f"Model berhasil disimpan ke {filepath}")
         else:
             print("Model belum dilatih, tidak dapat menyimpan!")
