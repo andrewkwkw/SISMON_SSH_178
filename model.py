@@ -53,7 +53,8 @@ class SSHLogAnalyzer:
                 # Konversi string ke object Datetime
                 try:
                     if date_str[0].isdigit():
-                        dt_obj = pd.to_datetime(date_str, utc=True).tz_localize(None)
+                        # Ambil 19 karakter pertama (YYYY-MM-DDTHH:MM:SS) untuk menghindari pergeseran Timezone UTC
+                        dt_obj = pd.to_datetime(date_str[:19])
                     else:
                         dt_obj = pd.to_datetime(f"{date_str} {datetime.now().year}")
                 except Exception:
@@ -78,7 +79,7 @@ class SSHLogAnalyzer:
             if total_attempts == 0:
                 continue
                 
-            failed_count = len(group[group['status'].isin(['failed', 'invalid'])])
+            failed_count = len(group[group['status'] == 'failed']) + len(group[group['status'] == 'invalid'])
             unique_user_count = group['username'].nunique()
             invalid_count = len(group[group['status'] == 'invalid'])
             
@@ -88,7 +89,7 @@ class SSHLogAnalyzer:
             top_username = group['username'].value_counts().idxmax() if not group.empty else "-"
             
             features.append({
-                'time_window': time_window.strftime('%H:%M'),
+                'time_window': time_window.strftime('%d %b %Y, %H:%M'),
                 'ip': ip,
                 'failed_count': failed_count,
                 'unique_user_count': unique_user_count,
