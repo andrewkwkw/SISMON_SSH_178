@@ -64,17 +64,48 @@ def process_logs_batch(raw_lines):
     df_features = GLOBAL_ANALYZER.feature_engineering(df_parsed)
     results = GLOBAL_ANALYZER.detect_anomalies(df_features)
     
-    # Sort and format results
+    # Aggregasi berdasarkan IP
+    aggregated = {}
     for r in results:
-        r['failed_count'] = int(r['failed_count'])
-        r['if_label'] = int(r['if_label'])
-        r['z_score'] = float(r['z_score'])
-        reasons = []
-        if r['z_score'] > 3: reasons.append("Z-Score Tinggi")
-        if r['if_label'] == -1: reasons.append("Deteksi Anomali")
-        r['reason'] = " & ".join(reasons) if reasons else "Normal"
+        ip = r['ip']
+        failed_count = int(r['failed_count'])
+        if_label = int(r['if_label'])
+        z_score = float(r['z_score'])
+        severity = r['severity']
         
-    results_sorted = sorted(results, key=lambda x: x['failed_count'], reverse=True)
+        reasons = []
+        if z_score > 3: reasons.append("Z-Score Tinggi")
+        if if_label == -1: reasons.append("Deteksi Anomali")
+        reason = " & ".join(reasons) if reasons else "Normal"
+
+        if ip not in aggregated:
+            aggregated[ip] = {
+                'ip': ip,
+                'time_window': r['time_window'],
+                'failed_count': failed_count,
+                'z_score': z_score,
+                'if_label': if_label,
+                'severity': severity,
+                'reason': reason,
+                'top_username': r['top_username']
+            }
+        else:
+            # Akumulasi count
+            aggregated[ip]['failed_count'] += failed_count
+            # Ambil Z-score tertinggi
+            if z_score > aggregated[ip]['z_score']:
+                aggregated[ip]['z_score'] = z_score
+                aggregated[ip]['reason'] = reason # Update reason mengikuti z_score tertinggi
+            # Ambil Severity terburuk
+            if severity == 'CRITICAL':
+                aggregated[ip]['severity'] = 'CRITICAL'
+            elif severity == 'WARNING' and aggregated[ip]['severity'] != 'CRITICAL':
+                aggregated[ip]['severity'] = 'WARNING'
+            # Ambil label IF terburuk (-1)
+            if if_label == -1:
+                aggregated[ip]['if_label'] = -1
+                
+    results_sorted = sorted(list(aggregated.values()), key=lambda x: x['failed_count'], reverse=True)
     
     summary = {
         "critical": sum(1 for r in results_sorted if r['severity'] == 'CRITICAL'),
