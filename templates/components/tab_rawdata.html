@@ -4,6 +4,9 @@
             <i class="fa-solid fa-search text-textMuted text-xs"></i>
             <input type="text" id="log-search" onkeyup="filterLogs()" placeholder="KQL query..." class="bg-transparent border-none outline-none w-full text-textMain text-sm">
         </div>
+        <button id="btn-livetail" onclick="toggleLiveTail()" class="shrink-0 bg-panel border border-borderWazuh text-textMain hover:bg-gray-700 px-4 py-2 rounded transition-colors flex items-center gap-2 text-sm font-medium">
+            <i class="fa-solid fa-pause text-warning" id="icon-livetail"></i> <span id="text-livetail">Pause Live Tail</span>
+        </button>
     </div>
 
     <div class="wazuh-panel flex flex-col overflow-hidden flex-1 min-h-0 h-full">

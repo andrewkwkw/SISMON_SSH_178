@@ -18,7 +18,7 @@
         const topUserRowsPerPage = 50;
 
         let liveTailInterval = null;
-        let isLiveTailActive = false;
+        let isLiveTailPaused = false;
 
         
         let perfInterval = null;
@@ -226,6 +226,25 @@
             const query = document.getElementById('search-failed').value.toLowerCase();
             const filtered = currentFailedLogs.filter(log => log.toLowerCase().includes(query));
             document.getElementById('log-failed').innerHTML = filtered.join('<br>') || 'Tidak ada data matching.';
+        }
+
+        
+        function toggleLiveTail() {
+            isLiveTailPaused = !isLiveTailPaused;
+            const btnIcon = document.getElementById('icon-livetail');
+            const btnText = document.getElementById('text-livetail');
+            
+            if (isLiveTailPaused) {
+                btnIcon.className = 'fa-solid fa-play text-primary';
+                btnText.textContent = 'Resume Live Tail';
+            } else {
+                btnIcon.className = 'fa-solid fa-pause text-warning';
+                btnText.textContent = 'Pause Live Tail';
+                // Force update right away when resuming
+                if(!document.getElementById('log-search').value) {
+                    document.getElementById('log-raw').innerHTML = currentRawLogs.join('') || 'Tidak ada data.';
+                }
+            }
         }
 
         function filterLogs() {
@@ -549,7 +568,7 @@
                     if(!document.getElementById('search-failed').value) {
                         document.getElementById('log-failed').innerHTML = currentFailedLogs.join('<br>') || 'Tidak ada data.';
                     }
-                    if(!document.getElementById('log-search').value) {
+                    if(!document.getElementById('log-search').value && !isLiveTailPaused) {
                         document.getElementById('log-raw').innerHTML = currentRawLogs.join('') || 'Tidak ada data.';
                     }
                 }
