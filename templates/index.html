@@ -199,22 +199,22 @@
 
             <!-- 2 Charts -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Chart 1: Mixed Chart -->
+                <!-- Chart 1: Z-Score -->
                 <div class="glass-panel p-6">
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-line text-primary"></i> Korelasi Volume & Tingkat Anomali (Top 15)</h3>
+                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-line text-primary"></i> Deteksi Anomali Statistik (Z-Score)</h3>
                     </div>
                     <div class="h-64">
-                        <canvas id="chartMixed"></canvas>
+                        <canvas id="chartZScore"></canvas>
                     </div>
                 </div>
-                <!-- Chart 2: Doughnut Chart -->
+                <!-- Chart 2: Isolation Forest -->
                 <div class="glass-panel p-6">
                     <div class="flex justify-between items-center mb-6">
-                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-chart-pie text-critical"></i> Distribusi Tingkat Ancaman Keseluruhan</h3>
+                        <h3 class="font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-network-wired text-critical"></i> Klasifikasi Machine Learning (Isolation Forest)</h3>
                     </div>
-                    <div class="h-64 flex justify-center">
-                        <canvas id="chartDistribution"></canvas>
+                    <div class="h-64">
+                        <canvas id="chartIF"></canvas>
                     </div>
                 </div>
             </div>
@@ -536,7 +536,7 @@
 
                     renderAnalysisTable();
                     renderTopUsersTable();
-                    renderCharts(data.chart_labels, data.chart_failed, data.chart_zscore, data.summary);
+                    renderCharts(currentAnalysisLogs);
                 })
                 .finally(() => toggleLoading(false));
         }
@@ -685,7 +685,16 @@
                 .finally(() => toggleLoading(false));
         }
 
-        function renderCharts(labels, failedData, zscoreData, summary) {
+        function renderCharts(logs) {
+            const top15 = logs.slice(0, 15);
+            const labels = top15.map(r => `${r.ip} (${r.time_window})`);
+            const failedData = top15.map(r => r.failed_count);
+            const zscoreData = top15.map(r => r.z_score);
+            
+            // Generate colors for IF chart: Red if -1 (Anomaly), Green if 1 (Normal)
+            const ifColors = top15.map(r => r.if_label === -1 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(16, 185, 129, 0.8)');
+            const ifBorderColors = top15.map(r => r.if_label === -1 ? 'rgba(239, 68, 68, 1)' : 'rgba(16, 185, 129, 1)');
+
             // Global Chart Style Overrides
             Chart.defaults.color = '#94A3B8';
             Chart.defaults.font.family = "'Outfit', sans-serif";
@@ -698,9 +707,9 @@
             Chart.defaults.plugins.tooltip.cornerRadius = 8;
             Chart.defaults.plugins.tooltip.displayColors = true;
 
-            // CHART 1: MIXED CHART (Bar + Line)
+            // CHART 1: Z-SCORE (Mixed Bar + Line)
             if(chart1) chart1.destroy();
-            const ctx1 = document.getElementById('chartMixed').getContext('2d');
+            const ctx1 = document.getElementById('chartZScore').getContext('2d');
             
             let gradientBar = ctx1.createLinearGradient(0, 0, 0, 400);
             gradientBar.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
@@ -712,13 +721,13 @@
                     datasets: [
                         {
                             type: 'line',
-                            label: 'Z-Score (Anomali)',
+                            label: 'Z-Score',
                             data: zscoreData,
-                            borderColor: '#EF4444',
-                            backgroundColor: '#EF4444',
+                            borderColor: '#3B82F6',
+                            backgroundColor: '#3B82F6',
                             borderWidth: 2,
                             tension: 0.4,
-                            pointBackgroundColor: '#EF4444',
+                            pointBackgroundColor: '#3B82F6',
                             pointRadius: 4,
                             yAxisID: 'y1',
                         },
@@ -741,7 +750,7 @@
                         legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } }
                     },
                     scales: { 
-                        x: { display: false }, // Sembunyikan label panjang di bawah
+                        x: { display: false },
                         y: { 
                             type: 'linear', display: true, position: 'left',
                             title: { display: true, text: 'Jumlah Gagal', color: '#94A3B8', font: { size: 10 } },
@@ -749,48 +758,50 @@
                         },
                         y1: {
                             type: 'linear', display: true, position: 'right',
-                            title: { display: true, text: 'Z-Score', color: '#EF4444', font: { size: 10 } },
-                            grid: { drawOnChartArea: false } // Hilangkan grid untuk axis kanan
+                            title: { display: true, text: 'Z-Score', color: '#3B82F6', font: { size: 10 } },
+                            grid: { drawOnChartArea: false }
                         }
                     }
                 }
             });
 
-            // CHART 2: DOUGHNUT CHART (Distribution)
+            // CHART 2: ISOLATION FOREST (Colored Bar)
             if(chart2) chart2.destroy();
-            const ctx2 = document.getElementById('chartDistribution').getContext('2d');
+            const ctx2 = document.getElementById('chartIF').getContext('2d');
             
             chart2 = new Chart(ctx2, {
-                type: 'doughnut',
+                type: 'bar',
                 data: {
-                    labels: ['Normal', 'Warning', 'Critical'],
+                    labels: labels,
                     datasets: [{
-                        data: [summary.normal, summary.warning, summary.critical],
-                        backgroundColor: [
-                            'rgba(16, 185, 129, 0.8)', // Normal (Green)
-                            'rgba(245, 158, 11, 0.8)', // Warning (Yellow)
-                            'rgba(239, 68, 68, 0.8)'   // Critical (Red)
-                        ],
-                        borderColor: '#1E293B',
-                        borderWidth: 2,
-                        hoverOffset: 4
+                        label: 'Gagal Login (Volume)',
+                        data: failedData,
+                        backgroundColor: ifColors,
+                        borderColor: ifBorderColors,
+                        borderWidth: 1,
+                        borderRadius: 4
                     }]
                 },
                 options: { 
                     responsive: true, maintainAspectRatio: false,
-                    cutout: '70%',
                     plugins: { 
-                        legend: { position: 'right', labels: { usePointStyle: true, padding: 20, color: '#F1F5F9' } },
+                        legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    if (label) { label += ': '; }
-                                    label += context.raw + ' IP';
-                                    return label;
+                                afterLabel: function(context) {
+                                    const index = context.dataIndex;
+                                    const ifValue = top15[index].if_label;
+                                    return `IF Status: ${ifValue === -1 ? 'ANOMALI (-1)' : 'NORMAL (1)'}`;
                                 }
                             }
                         }
+                    },
+                    scales: { 
+                        x: { display: false }, 
+                        y: { 
+                            title: { display: true, text: 'Jumlah Gagal', color: '#94A3B8', font: { size: 10 } },
+                            grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false }
+                        } 
                     }
                 }
             });
