@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import re
 import os
+import joblib
 from datetime import datetime
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
@@ -20,7 +21,7 @@ class SSHLogAnalyzer:
         self.iso_forest = IsolationForest(contamination=contamination, random_state=42)
         self.scaler = StandardScaler()
         
-        # Data statistik simulasi untuk Z-Score
+        # Data statistik simulasi untuk Z-Score (Akan ditimpa saat training)
         self.history_mean_failed = 2.0
         self.history_std_failed = 1.0
         self.is_fitted = False
@@ -83,8 +84,6 @@ class SSHLogAnalyzer:
             
             invalid_user_ratio = invalid_count / total_attempts if total_attempts > 0 else 0
             
-            invalid_user_ratio = invalid_count / total_attempts if total_attempts > 0 else 0
-            
             # Cari username yang paling sering dicoba di window ini
             top_username = group['username'].value_counts().idxmax() if not group.empty else "-"
             
@@ -100,6 +99,14 @@ class SSHLogAnalyzer:
 
     def train_isolation_forest(self, train_df_features):
         if train_df_features.empty: return
+        
+        # Hitung Z-Score baseline dari data training
+        failed_counts = train_df_features['failed_count']
+        self.history_mean_failed = float(failed_counts.mean())
+        self.history_std_failed = float(failed_counts.std())
+        if pd.isna(self.history_std_failed) or self.history_std_failed == 0:
+            self.history_std_failed = 1.0 # Mencegah pembagian 0 jika datanya homogen
+            
         X = train_df_features[['failed_count', 'unique_user_count', 'invalid_user_ratio']]
         X_scaled = self.scaler.fit_transform(X)
         self.iso_forest.fit(X_scaled)
@@ -140,6 +147,22 @@ class SSHLogAnalyzer:
                 'severity': severity
             })
         return results
+        
+    def save_model(self, filepath):
+        if self.is_fitted:
+            joblib.dump(self, filepath)
+            print(f"Model berhasil disimpan ke {filepath}")
+        else:
+            print("Model belum dilatih, tidak dapat menyimpan!")
+            
+    @classmethod
+    def load_model(cls, filepath):
+        if os.path.exists(filepath):
+            model = joblib.load(filepath)
+            print(f"Model berhasil dimuat dari {filepath}")
+            return model
+        else:
+            raise FileNotFoundError(f"File model {filepath} tidak ditemukan!")
 
 if __name__ == "__main__":
     import sys

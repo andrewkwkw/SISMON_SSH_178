@@ -1,80 +1,77 @@
-from flask import Flask, render_template, jsonify
-from model import SSHLogAnalyzer
 import os
 import time
 import subprocess
+import threading
+import json
+import psutil
+from flask import Flask, render_template, jsonify, Response
+from model import SSHLogAnalyzer
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 app = Flask(__name__)
 
-# Cache global untuk mempercepat proses loading
-CACHE = {
-    "last_mtime": 0,
-    "last_update": 0, # Waktu terakhir diupdate (dalam detik)
-    "analyze_data": None,
-    "livelog_data": None
-}
+# ==========================================
+# GLOBAL STATE & CONFIGURATION
+# ==========================================
+MODEL_FILE = "model.pkl"
+GLOBAL_ANALYZER = None
+ROLLING_LOGS = []
+MAX_ROLLING_LINES = 1000
+
+# Cache for latest results to serve to non-SSE clients if needed
+LATEST_ANALYSIS = {}
+LATEST_LIVELOG = {}
+
+# List of active SSE client queues
+SSE_CLIENTS = []
 
 def get_log_file():
-    # 1. Prioritas utama: File log asli di VPS (production)
     if os.path.exists("/var/log/auth.log"):
         return "/var/log/auth.log"
-    # 2. Fallback: File log bohongan untuk testing lokal
     if os.path.exists("auth2.log"):
         return "auth2.log"
     if os.path.exists("../auth2.log"):
         return "../auth2.log"
     return "auth2.log"
 
-def update_cache_if_needed():
-    log_file = get_log_file()
-    if not os.path.exists(log_file):
-        return False
-        
-    mtime = os.path.getmtime(log_file)
-    current_time = time.time()
-    
-    # 1. Jangan update jika file tidak berubah
-    if mtime <= CACHE["last_mtime"] and CACHE["analyze_data"] is not None:
-        return True
-        
-    # 2. Cooldown 60 detik agar lebih mulus saat presentasi sidang
-    if current_time - CACHE["last_update"] < 60 and CACHE["analyze_data"] is not None:
-        return True
-        
-    print("Menganalisis ulang log file (bisa memakan waktu)...")
-    # OPTIMASI EKSTREM: Gunakan perintah native 'tail' Linux agar selesai dalam hitungan milidetik
-    if os.name == 'posix': # Jika di VPS (Linux)
+def get_tail_lines(filepath, n_lines):
+    if os.name == 'posix':
         try:
-            result = subprocess.run(['tail', '-n', '10000', log_file], stdout=subprocess.PIPE, text=True, errors='ignore', check=True)
-            raw_logs = result.stdout.splitlines(keepends=True)
-            if not raw_logs:
-                raise Exception("Empty stdout")
+            result = subprocess.run(['tail', '-n', str(n_lines), filepath], stdout=subprocess.PIPE, text=True, errors='ignore')
+            return result.stdout.splitlines(keepends=True)
         except Exception:
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                raw_logs = f.readlines()[-10000:]
-    else: # Jika di Windows lokal
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-            raw_logs = f.readlines()[-10000:]
-        
-    analyzer = SSHLogAnalyzer(contamination=0.05)
-    df_parsed = analyzer.parse_log(raw_logs)
+            pass
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            return f.readlines()[-n_lines:]
+    except Exception:
+        return []
+
+# ==========================================
+# CORE PROCESSING LOGIC
+# ==========================================
+def process_logs_batch(raw_lines):
+    """Memproses raw_lines menggunakan pre-trained model dan mengupdate state"""
+    global GLOBAL_ANALYZER, LATEST_ANALYSIS, LATEST_LIVELOG
     
-    # ------------------
-    # ANALYZE DATA
-    # ------------------
-    df_features = analyzer.feature_engineering(df_parsed)
-    analyzer.train_isolation_forest(df_features)
-    results = analyzer.detect_anomalies(df_features)
+    if not GLOBAL_ANALYZER or not raw_lines:
+        return
+
+    start_time = time.time()
     
+    df_parsed = GLOBAL_ANALYZER.parse_log(raw_lines)
+    df_features = GLOBAL_ANALYZER.feature_engineering(df_parsed)
+    results = GLOBAL_ANALYZER.detect_anomalies(df_features)
+    
+    # Sort and format results
     for r in results:
         r['failed_count'] = int(r['failed_count'])
         r['if_label'] = int(r['if_label'])
         r['z_score'] = float(r['z_score'])
         reasons = []
-        if r['z_score'] > 3:
-            reasons.append("Z-Score Tinggi")
-        if r['if_label'] == -1:
-            reasons.append("Deteksi Anomali")
+        if r['z_score'] > 3: reasons.append("Z-Score Tinggi")
+        if r['if_label'] == -1: reasons.append("Deteksi Anomali")
         r['reason'] = " & ".join(reasons) if reasons else "Normal"
         
     results_sorted = sorted(results, key=lambda x: x['failed_count'], reverse=True)
@@ -95,21 +92,18 @@ def update_cache_if_needed():
     if_counts = {}
     user_counts = {}
     for r in results_sorted:
-        # Hitung IF Anomaly IP
         if r['if_label'] == -1:
             if_counts[r['ip']] = if_counts.get(r['ip'], 0) + 1
-        
-        # Hitung Username (Abaikan jika -)
         if r['top_username'] != "-":
             user_counts[r['top_username']] = user_counts.get(r['top_username'], 0) + r['failed_count']
             
     peak_if = max(if_counts.items(), key=lambda x: x[1])[0] if if_counts else "-"
-    
-    # Sort user_counts for the new Tab
     top_users_list = [{"username": k, "count": v} for k, v in sorted(user_counts.items(), key=lambda x: x[1], reverse=True)]
     peak_user = top_users_list[0]['username'] if top_users_list else "-"
 
-    CACHE["analyze_data"] = {
+    inference_time = (time.time() - start_time) * 1000 # ms
+
+    LATEST_ANALYSIS = {
         "summary": summary,
         "peak_zscore_ip": peak_zscore,
         "peak_if_ip": peak_if,
@@ -118,67 +112,153 @@ def update_cache_if_needed():
         "logs": results_sorted,
         "chart_labels": trend_zscore_labels,
         "chart_failed": trend_zscore_data,
-        "chart_zscore": trend_anomaly_data
+        "chart_zscore": trend_anomaly_data,
+        "inference_latency_ms": round(inference_time, 2)
     }
-    
-    # ------------------
-    # LIVE LOG DATA
-    # ------------------
-    last_raw = raw_logs[-500:]
+
+    # Process Livelog
     df_success = df_parsed[df_parsed['status'] == 'success'].tail(100)
     df_failed = df_parsed[df_parsed['status'] == 'failed'].tail(100)
     
     success_logs = df_success.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
     failed_logs = df_failed.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
     
-    CACHE["livelog_data"] = {
+    LATEST_LIVELOG = {
         "success_logs": success_logs[::-1],
         "failed_logs": failed_logs[::-1],
-        "raw_logs": last_raw[::-1][:200]
+        "raw_logs": raw_lines[::-1][:200]
     }
     
-    CACHE["last_mtime"] = mtime
-    CACHE["last_update"] = current_time
-    return True
+    # Broadcast to SSE Clients
+    notify_sse_clients()
 
+def notify_sse_clients():
+    payload = {
+        "analysis": LATEST_ANALYSIS,
+        "livelog": LATEST_LIVELOG
+    }
+    data = f"data: {json.dumps(payload)}\n\n"
+    for queue in SSE_CLIENTS:
+        queue.append(data)
+
+# ==========================================
+# WATCHDOG & INITIALIZATION
+# ==========================================
+class LogFileHandler(FileSystemEventHandler):
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.file_pointer = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+        self.debounce_timer = None
+
+    def on_modified(self, event):
+        if event.src_path == os.path.abspath(self.filepath):
+            if self.debounce_timer is not None:
+                self.debounce_timer.cancel()
+            self.debounce_timer = threading.Timer(1.0, self.read_new_lines)
+            self.debounce_timer.start()
+
+    def read_new_lines(self):
+        global ROLLING_LOGS
+        try:
+            if os.path.getsize(self.filepath) < self.file_pointer:
+                self.file_pointer = 0 # File rotated
+                
+            with open(self.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                f.seek(self.file_pointer)
+                new_lines = f.readlines()
+                self.file_pointer = f.tell()
+                
+            if new_lines:
+                ROLLING_LOGS.extend(new_lines)
+                if len(ROLLING_LOGS) > MAX_ROLLING_LINES:
+                    del ROLLING_LOGS[:-MAX_ROLLING_LINES]
+                process_logs_batch(ROLLING_LOGS)
+        except Exception as e:
+            print("Error membaca log baru:", e)
+
+def init_system():
+    global GLOBAL_ANALYZER, ROLLING_LOGS
+    
+    # 1. Autonomous Training / Model Loading
+    if os.path.exists(MODEL_FILE):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Memuat Pre-Trained Model dari {MODEL_FILE}...")
+        GLOBAL_ANALYZER = SSHLogAnalyzer.load_model(MODEL_FILE)
+    else:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Model belum ada. Memulai Autonomous Training (10,000 data)...")
+        log_file = get_log_file()
+        raw_logs = get_tail_lines(log_file, 10000)
+        GLOBAL_ANALYZER = SSHLogAnalyzer(contamination=0.05)
+        df_parsed = GLOBAL_ANALYZER.parse_log(raw_logs)
+        df_features = GLOBAL_ANALYZER.feature_engineering(df_parsed)
+        GLOBAL_ANALYZER.train_isolation_forest(df_features)
+        GLOBAL_ANALYZER.save_model(MODEL_FILE)
+        print("✅ Autonomous Training Selesai.")
+
+    # 2. Inisialisasi Rolling Data
+    log_file = get_log_file()
+    ROLLING_LOGS = get_tail_lines(log_file, MAX_ROLLING_LINES)
+    process_logs_batch(ROLLING_LOGS)
+
+    # 3. Mulai Watchdog Observer
+    if os.path.exists(log_file):
+        observer = Observer()
+        event_handler = LogFileHandler(log_file)
+        observer.schedule(event_handler, path=os.path.dirname(os.path.abspath(log_file)), recursive=False)
+        observer.start()
+        print(f"👀 Watchdog aktif memantau file: {log_file}")
+        # Note: We don't join the observer so it runs in background
+
+# ==========================================
+# FLASK ROUTES
+# ==========================================
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/api/stream')
+def api_stream():
+    def event_stream():
+        q = []
+        SSE_CLIENTS.append(q)
+        try:
+            # Kirim data awal saat pertama konek
+            payload = {"analysis": LATEST_ANALYSIS, "livelog": LATEST_LIVELOG}
+            yield f"data: {json.dumps(payload)}\n\n"
+            
+            # Terus tunggu data baru
+            while True:
+                if q:
+                    yield q.pop(0)
+                else:
+                    time.sleep(0.5)
+        except GeneratorExit:
+            SSE_CLIENTS.remove(q)
+            
+    return Response(event_stream(), mimetype="text/event-stream")
+
+@app.route('/api/performance')
+def api_performance():
+    return jsonify({
+        "cpu_percent": psutil.cpu_percent(interval=0.1),
+        "ram_percent": psutil.virtual_memory().percent,
+        "latency_ms": LATEST_ANALYSIS.get("inference_latency_ms", 0)
+    })
+
+# Untuk Backward Compatibility jika ada yang masih hit API biasa
 @app.route('/api/analyze')
 def api_analyze():
-    if not update_cache_if_needed():
-        return jsonify({"error": "Log file not found"}), 404
-    return jsonify(CACHE["analyze_data"])
+    return jsonify(LATEST_ANALYSIS)
 
 @app.route('/api/livelog')
 def api_livelog():
-    if not update_cache_if_needed():
-        return jsonify({"error": "Log file not found"}), 404
-    return jsonify(CACHE["livelog_data"])
+    return jsonify(LATEST_LIVELOG)
 
-@app.route('/api/raw_tail')
-def api_raw_tail():
-    log_file = get_log_file()
-    if not os.path.exists(log_file):
-        return jsonify({"error": "Log file not found"}), 404
-        
-    if os.name == 'posix':
-        try:
-            result = subprocess.run(['tail', '-n', '500', log_file], stdout=subprocess.PIPE, text=True, errors='ignore')
-            raw_logs = result.stdout.splitlines(keepends=True)
-        except Exception:
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                raw_logs = f.readlines()[-500:]
-    else:
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-            raw_logs = f.readlines()[-500:]
-            
-    return jsonify({"raw_logs": raw_logs[::-1]}) # Dibalik agar terbaru di atas
-
-# Inisialisasi awal (berguna saat dijalankan via Gunicorn)
-with app.app_context():
-    update_cache_if_needed()
+# ==========================================
+# STARTUP
+# ==========================================
+from datetime import datetime
+init_system()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Disable reloader to prevent running watchdog and initialization twice
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

@@ -1,0 +1,93 @@
+<div id="page-performance" class="hidden animate-fade-in space-y-6 max-w-[1400px]">
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- CPU Usage -->
+        <div class="bg-panel rounded-xl border border-borderWazuh p-5 shadow-sm relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-[100px] z-0"></div>
+            <div class="flex items-center justify-between mb-4 relative z-10">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <i class="fa-solid fa-microchip text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-textMuted">CPU Usage</h3>
+                        <p class="text-[10px] text-textMuted mt-0.5">Beban Server</p>
+                    </div>
+                </div>
+            </div>
+            <div class="relative z-10 flex items-end justify-between">
+                <div>
+                    <span id="perf-cpu" class="text-3xl font-bold text-textMain tracking-tight">0</span>
+                    <span class="text-textMuted ml-1">%</span>
+                </div>
+                <div class="w-1/2 bg-dark rounded-full h-2 mb-2">
+                    <div id="perf-cpu-bar" class="bg-primary h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RAM Usage -->
+        <div class="bg-panel rounded-xl border border-borderWazuh p-5 shadow-sm relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-warning/5 rounded-bl-[100px] z-0"></div>
+            <div class="flex items-center justify-between mb-4 relative z-10">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center text-warning">
+                        <i class="fa-solid fa-memory text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-textMuted">RAM Usage</h3>
+                        <p class="text-[10px] text-textMuted mt-0.5">Memori Tersedia</p>
+                    </div>
+                </div>
+            </div>
+            <div class="relative z-10 flex items-end justify-between">
+                <div>
+                    <span id="perf-ram" class="text-3xl font-bold text-textMain tracking-tight">0</span>
+                    <span class="text-textMuted ml-1">%</span>
+                </div>
+                <div class="w-1/2 bg-dark rounded-full h-2 mb-2">
+                    <div id="perf-ram-bar" class="bg-warning h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inference Latency -->
+        <div class="bg-panel rounded-xl border border-borderWazuh p-5 shadow-sm relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-normal/5 rounded-bl-[100px] z-0"></div>
+            <div class="flex items-center justify-between mb-4 relative z-10">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-normal/10 flex items-center justify-center text-normal">
+                        <i class="fa-solid fa-bolt text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-medium text-textMuted">Inference Latency</h3>
+                        <p class="text-[10px] text-textMuted mt-0.5">Kecepatan AI Mendeteksi</p>
+                    </div>
+                </div>
+            </div>
+            <div class="relative z-10">
+                <div>
+                    <span id="perf-latency" class="text-3xl font-bold text-textMain tracking-tight">0</span>
+                    <span class="text-textMuted ml-1">ms</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Info Panel -->
+    <div class="bg-dark/50 border border-primary/20 rounded-xl p-5 mt-6 relative overflow-hidden">
+        <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+        <div class="flex items-start gap-4">
+            <div class="mt-1 text-primary">
+                <i class="fa-solid fa-circle-info text-xl"></i>
+            </div>
+            <div>
+                <h4 class="text-textMain font-medium mb-1">Autonomous Monitoring Aktif</h4>
+                <p class="text-sm text-textMuted leading-relaxed">
+                    Sistem secara otomatis menggunakan <strong>Server-Sent Events (SSE)</strong> untuk mendengarkan perubahan file <code class="bg-black/30 px-1 py-0.5 rounded text-xs text-primary">auth.log</code> secara <em>real-time</em> menggunakan <code class="bg-black/30 px-1 py-0.5 rounded text-xs">watchdog</code>.
+                    Model Isolation Forest berjalan dengan metode <em>Pre-Trained Inference</em> yang meminimalkan beban CPU pada VPS 1 Core 2GB RAM Anda.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

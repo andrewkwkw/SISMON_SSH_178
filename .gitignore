@@ -1,0 +1,30 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Machine Learning models
+*.pkl
+model.pkl
+
+# Log files
+*.log
+auth.log
+auth2.log
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# Dokumen Skripsi (TIDAK AKAN DI-PUSH)
+skripsi_text.txt
+*.docx
+skripsi*.docx
+skripsi_178*.docx
