@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import re
 import os
-import joblib
 from datetime import datetime
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
@@ -21,7 +20,7 @@ class SSHLogAnalyzer:
         self.iso_forest = IsolationForest(contamination=contamination, random_state=42)
         self.scaler = StandardScaler()
         
-        # Data statistik simulasi untuk Z-Score (Akan ditimpa saat training)
+        # Data statistik simulasi untuk Z-Score
         self.history_mean_failed = 2.0
         self.history_std_failed = 1.0
         self.is_fitted = False
@@ -53,17 +52,12 @@ class SSHLogAnalyzer:
                 # Konversi string ke object Datetime
                 try:
                     if date_str[0].isdigit():
-                        # Ambil 19 karakter pertama (YYYY-MM-DDTHH:MM:SS) untuk menghindari pergeseran Timezone UTC
-                        dt_obj = pd.to_datetime(date_str[:19])
+                        dt_obj = pd.to_datetime(date_str, utc=True).tz_localize(None)
                     else:
                         dt_obj = pd.to_datetime(f"{date_str} {datetime.now().year}")
                 except Exception:
                     dt_obj = pd.NaT
                 parsed_data.append({'timestamp': dt_obj, 'ip': ip, 'username': user, 'status': status})
-        
-        if not parsed_data:
-            return pd.DataFrame(columns=['timestamp', 'ip', 'username', 'status'])
-            
         return pd.DataFrame(parsed_data)
 
     def feature_engineering(self, df):
@@ -79,48 +73,23 @@ class SSHLogAnalyzer:
             if total_attempts == 0:
                 continue
                 
-            failed_count = len(group[group['status'] == 'failed']) + len(group[group['status'] == 'invalid'])
+            failed_count = len(group[group['status'].isin(['failed', 'invalid'])])
             unique_user_count = group['username'].nunique()
             invalid_count = len(group[group['status'] == 'invalid'])
             
             invalid_user_ratio = invalid_count / total_attempts if total_attempts > 0 else 0
             
-            # Cari username yang paling sering dicoba di window ini
-            top_username = group['username'].value_counts().idxmax() if not group.empty else "-"
-            
             features.append({
-                'time_window': time_window.strftime('%d %b %Y, %H:%M'),
+                'time_window': time_window.strftime('%H:%M'),
                 'ip': ip,
                 'failed_count': failed_count,
                 'unique_user_count': unique_user_count,
-                'invalid_user_ratio': invalid_user_ratio,
-                'top_username': top_username
+                'invalid_user_ratio': invalid_user_ratio
             })
         return pd.DataFrame(features)
 
     def train_isolation_forest(self, train_df_features):
         if train_df_features.empty: return
-        
-        # --- ROBUST BASELINE CALCULATION ---
-        # 1. Ambil data jumlah kegagalan login
-        failed_counts = train_df_features['failed_count']
-        
-        # 2. Buang data-data ekstrem (Membuang 30% data tertinggi yang diasumsikan sebagai serangan)
-        # Menyisakan 70% data terbawah yang mewakili lalu lintas normal
-        if len(failed_counts) > 10:
-            threshold = failed_counts.quantile(0.70)
-            normal_traffic = failed_counts[failed_counts <= threshold]
-            if len(normal_traffic) == 0: 
-                normal_traffic = failed_counts # Fallback
-        else:
-            normal_traffic = failed_counts
-            
-        self.history_mean_failed = float(normal_traffic.mean())
-        self.history_std_failed = float(normal_traffic.std())
-        
-        if pd.isna(self.history_std_failed) or self.history_std_failed == 0:
-            self.history_std_failed = 1.0 # Mencegah pembagian 0
-            
         X = train_df_features[['failed_count', 'unique_user_count', 'invalid_user_ratio']]
         X_scaled = self.scaler.fit_transform(X)
         self.iso_forest.fit(X_scaled)
@@ -130,69 +99,32 @@ class SSHLogAnalyzer:
         if self.history_std_failed == 0: return 0
         return (failed_count - self.history_mean_failed) / self.history_std_failed
 
-    def detect_anomalies(self, df_features):
-        if df_features.empty or not self.is_fitted: return []
-        X = df_features[['failed_count', 'unique_user_count', 'invalid_user_ratio']]
+    def detect_anomalies(self, features_df):
+        if features_df.empty or not self.is_fitted: return []
         
-        # Scaling
+        X = features_df[['failed_count', 'unique_user_count', 'invalid_user_ratio']]
         X_scaled = self.scaler.transform(X)
-        
-        # Prediction (-1: anomaly, 1: normal)
-        preds = self.iso_forest.predict(X_scaled)
+        if_preds = self.iso_forest.predict(X_scaled)
         
         results = []
-        for i, row in df_features.iterrows():
-            z_score = self.calculate_z_score(row['failed_count'])
-            severity = 'NORMAL'
-            if preds[i] == -1 or z_score > 3:
-                severity = 'WARNING'
-                if preds[i] == -1 and z_score > 3:
-                    severity = 'CRITICAL'
-                    
+        for i, row in features_df.iterrows():
+            failed_count = row['failed_count']
+            z_score = self.calculate_z_score(failed_count)
+            iso_label = if_preds[i]
+            
+            if z_score > 3 and iso_label == -1: severity = "CRITICAL"
+            elif z_score > 3 or iso_label == -1: severity = "WARNING"
+            else: severity = "NORMAL"
+                
             results.append({
-                'time_window': row['time_window'],
+                'time_window': row.get('time_window', 'N/A'),
                 'ip': row['ip'],
-                'failed_count': row['failed_count'],
-                'unique_user_count': row['unique_user_count'],
-                'invalid_user_ratio': row['invalid_user_ratio'],
-                'top_username': row.get('top_username', '-'),
-                'if_label': preds[i],
+                'failed_count': failed_count,
                 'z_score': round(z_score, 2),
+                'if_label': iso_label,
                 'severity': severity
             })
         return results
-        
-    def save_model(self, filepath):
-        if self.is_fitted:
-            model_data = {
-                'iso_forest': self.iso_forest,
-                'scaler': self.scaler,
-                'mean': self.history_mean_failed,
-                'std': self.history_std_failed
-            }
-            joblib.dump(model_data, filepath)
-            print(f"Model berhasil disimpan ke {filepath}")
-        else:
-            print("Model belum dilatih, tidak dapat menyimpan!")
-            
-    @classmethod
-    def load_model(cls, filepath):
-        if os.path.exists(filepath):
-            model_data = joblib.load(filepath)
-            instance = cls()
-            if isinstance(model_data, dict):
-                instance.iso_forest = model_data.get('iso_forest')
-                instance.scaler = model_data.get('scaler')
-                instance.history_mean_failed = model_data.get('mean', 2.0)
-                instance.history_std_failed = model_data.get('std', 1.0)
-            else:
-                instance.iso_forest = model_data
-                instance.scaler = StandardScaler() # Fallback if it was just the forest
-            instance.is_fitted = True
-            print(f"Model berhasil dimuat dari {filepath}")
-            return instance
-        else:
-            raise FileNotFoundError(f"File model {filepath} tidak ditemukan!")
 
 if __name__ == "__main__":
     import sys
