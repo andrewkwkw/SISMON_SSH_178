@@ -153,8 +153,13 @@ def process_logs_batch(raw_lines):
     df_success = df_parsed[df_parsed['status'] == 'success'].tail(100)
     df_failed = df_parsed[df_parsed['status'] == 'failed'].tail(100)
     
-    success_logs = df_success.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist() if not df_success.empty else []
-    failed_logs = df_failed.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist() if not df_failed.empty else []
+    success_logs = []
+    if not df_success.empty:
+        success_logs = df_success.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
+        
+    failed_logs = []
+    if not df_failed.empty:
+        failed_logs = df_failed.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
     
     LATEST_LIVELOG = {
         "success_logs": success_logs[::-1],
