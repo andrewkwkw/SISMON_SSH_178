@@ -153,8 +153,8 @@ def process_logs_batch(raw_lines):
     df_success = df_parsed[df_parsed['status'] == 'success'].tail(100)
     df_failed = df_parsed[df_parsed['status'] == 'failed'].tail(100)
     
-    success_logs = df_success.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
-    failed_logs = df_failed.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist()
+    success_logs = df_success.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist() if not df_success.empty else []
+    failed_logs = df_failed.apply(lambda row: f"{row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} - {row['ip']} ({row['username']})", axis=1).tolist() if not df_failed.empty else []
     
     LATEST_LIVELOG = {
         "success_logs": success_logs[::-1],
@@ -269,13 +269,7 @@ def api_stream():
             
     return Response(event_stream(), mimetype="text/event-stream")
 
-@app.route('/api/performance')
-def api_performance():
-    return jsonify({
-        "cpu_percent": psutil.cpu_percent(interval=0.1),
-        "ram_percent": psutil.virtual_memory().percent,
-        "latency_ms": LATEST_ANALYSIS.get("inference_latency_ms", 0)
-    })
+
 
 # Untuk Backward Compatibility jika ada yang masih hit API biasa
 @app.route('/api/analyze')

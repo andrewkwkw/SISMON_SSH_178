@@ -21,25 +21,6 @@
         let isLiveTailPaused = false;
 
         
-        let perfInterval = null;
-        function setupPerformanceStream() {
-            if(perfInterval) clearInterval(perfInterval);
-            
-            perfInterval = setInterval(() => {
-                fetch('/api/performance')
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById('perf-cpu').textContent = data.cpu_percent.toFixed(1);
-                    document.getElementById('perf-cpu-bar').style.width = data.cpu_percent + '%';
-                    
-                    document.getElementById('perf-ram').textContent = data.ram_percent.toFixed(1);
-                    document.getElementById('perf-ram-bar').style.width = data.ram_percent + '%';
-                    
-                    document.getElementById('perf-latency').textContent = data.latency_ms;
-                })
-                .catch(err => console.error("Performance stream error", err));
-            }, 1000);
-        }
 
         document.addEventListener('DOMContentLoaded', () => {
             setupLiveStream();
